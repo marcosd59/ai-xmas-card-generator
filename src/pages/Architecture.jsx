@@ -43,7 +43,7 @@ export default function Architecture() {
       image: "/images/amazon-polly.png",
       color: "from-[#D4AF37]/20 to-[#A7F3D0]/20",
       borderColor: "border-[#D4AF37]/40",
-      details: "Convierte el texto a voz (es-MX, Mia)",
+      details: "Convierte el texto a voz (es-MX, Andres)",
     },
     {
       id: "s3",

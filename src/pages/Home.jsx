@@ -28,6 +28,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [generated, setGenerated] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const audioRef = useRef(null);
   const backgroundAudioRef = useRef(null);
 
@@ -60,14 +63,63 @@ export default function Home() {
       // Detener cualquier audio anterior antes de cargar el nuevo
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+
+      // Cargar el nuevo audio
       audioRef.current.load();
-      audioRef.current.play().catch(() => {
-        // autoplay fallback: user can press play
+
+      // Intentar reproducir automáticamente cuando el audio esté listo
+      const playAudio = async () => {
+        if (audioRef.current) {
+          try {
+            await audioRef.current.play();
+            setIsPlaying(true);
+          } catch (error) {
+            // Si falla el autoplay (políticas del navegador), intentar de nuevo
+            // Esto puede pasar si el navegador bloquea el autoplay
+            console.log(
+              "Intento de autoplay, si falla el usuario puede presionar play"
+            );
+            setIsPlaying(false);
+          }
+        }
+      };
+
+      // Intentar reproducir cuando el audio tenga datos suficientes
+      const handleCanPlay = () => {
+        playAudio();
+      };
+
+      // También intentar cuando el audio esté completamente cargado
+      const handleLoadedData = () => {
+        playAudio();
+      };
+
+      audioRef.current.addEventListener("canplay", handleCanPlay, {
+        once: true,
       });
+      audioRef.current.addEventListener("loadeddata", handleLoadedData, {
+        once: true,
+      });
+
+      // Intentar reproducir inmediatamente también (por si ya está listo)
+      playAudio();
+
+      return () => {
+        if (audioRef.current) {
+          audioRef.current.removeEventListener("canplay", handleCanPlay);
+          audioRef.current.removeEventListener("loadeddata", handleLoadedData);
+        }
+      };
     } else if ((!audioUrl || !generated) && audioRef.current) {
       // Detener audio si no hay URL o si se resetea
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
     }
 
     // Cleanup: detener audio al desmontar o cambiar estado
@@ -76,6 +128,35 @@ export default function Home() {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
+    };
+  }, [audioUrl, generated]);
+
+  // Actualizar tiempo y duración del audio
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateDuration = () => setDuration(audio.duration);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+
+    audio.addEventListener("timeupdate", updateTime);
+    audio.addEventListener("loadedmetadata", updateDuration);
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
+
+    return () => {
+      audio.removeEventListener("timeupdate", updateTime);
+      audio.removeEventListener("loadedmetadata", updateDuration);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
     };
   }, [audioUrl, generated]);
 
@@ -139,6 +220,47 @@ export default function Home() {
     setAudioUrl("");
     setGenerated(false);
     setError("");
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
+  const togglePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+    }
+  };
+
+  const handleSeek = (e) => {
+    if (audioRef.current) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      const newTime = pos * duration;
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const handleDownload = () => {
+    if (audioUrl) {
+      const link = document.createElement("a");
+      link.href = audioUrl;
+      link.download = "mensaje-navideno.mp3";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -180,17 +302,6 @@ export default function Home() {
                   ✨ Powered by AI
                 </span>
               </div>
-
-              {/* Título con colores alternados */}
-              {/* <h1 className="mb-2 text-4xl font-semibold md:text-5xl lg:text-6xl drop-shadow-2xl tracking-tight">
-                <span className="text-white">Crea tu </span>
-                <span className="text-[#D4AF37]">Tarjeta</span>
-                <br />
-                <span className="text-[#D4AF37]">Navideña </span>
-                <span className="text-white">Perfecta</span>
-              </h1> */}
-
-              {/* Tu Tarjeta Navideña Personalizada  */}
 
               <h1 className="mb-6 text-4xl font-medium md:text-5xl lg:text-6xl drop-shadow-2xl tracking-normal leading-tight">
                 <span className="text-white mr-2">Tu</span>
@@ -382,7 +493,7 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* Audio player mejorado */}
+                          {/* Audio player personalizado */}
                           {audioUrl && (
                             <div className="mt-8 rounded-2xl border border-[#A7F3D0]/40 bg-gradient-to-br from-[#0F172A]/90 to-[#1a2332]/90 p-6 shadow-xl backdrop-blur-sm">
                               <div className="mb-5 flex items-center justify-center gap-3">
@@ -392,13 +503,103 @@ export default function Home() {
                                 </span>
                                 <div className="w-2 h-2 rounded-full bg-[#A7F3D0] animate-pulse"></div>
                               </div>
+
+                              {/* Audio oculto para control */}
                               <audio
                                 ref={audioRef}
-                                controls
                                 autoPlay
-                                className="mt-2 w-full rounded-xl shadow-lg"
                                 src={audioUrl}
+                                style={{ display: "none" }}
                               />
+
+                              {/* Reproductor personalizado */}
+                              <div className="mt-4 space-y-4">
+                                {/* Controles principales */}
+                                <div className="flex items-center gap-4">
+                                  {/* Botón Play/Pause */}
+                                  <button
+                                    onClick={togglePlayPause}
+                                    className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#F59E0B] hover:from-[#F59E0B] hover:to-[#D4AF37] transition-all duration-300 flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 group"
+                                    aria-label={
+                                      isPlaying ? "Pausar" : "Reproducir"
+                                    }
+                                  >
+                                    {isPlaying ? (
+                                      <svg
+                                        className="w-6 h-6 text-[#0F172A] ml-0.5"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        className="w-6 h-6 text-[#0F172A] ml-1"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                    )}
+                                  </button>
+
+                                  {/* Barra de progreso */}
+                                  <div className="flex-1 space-y-2">
+                                    <div
+                                      className="relative h-2.5 bg-[#0F172A]/60 rounded-full cursor-pointer group border border-[#A7F3D0]/20"
+                                      onClick={handleSeek}
+                                    >
+                                      <div
+                                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#A7F3D0] via-[#D4AF37] to-[#F59E0B] rounded-full transition-all duration-100 shadow-sm"
+                                        style={{
+                                          width: `${
+                                            duration
+                                              ? (currentTime / duration) * 100
+                                              : 0
+                                          }%`,
+                                        }}
+                                      />
+                                      <div
+                                        className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-[#D4AF37] rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity border-2 border-white/30"
+                                        style={{
+                                          left: `calc(${
+                                            duration
+                                              ? (currentTime / duration) * 100
+                                              : 0
+                                          }% - 10px)`,
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between text-xs text-white/70 font-medium">
+                                      <span>{formatTime(currentTime)}</span>
+                                      <span>{formatTime(duration)}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Botón de descarga */}
+                                  <button
+                                    onClick={handleDownload}
+                                    className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0F172A]/60 hover:bg-[#0F172A]/80 border border-[#A7F3D0]/30 hover:border-[#A7F3D0]/50 transition-all duration-300 flex items-center justify-center shadow-md hover:scale-110 active:scale-95 group"
+                                    aria-label="Descargar audio"
+                                    title="Descargar audio"
+                                  >
+                                    <svg
+                                      className="w-5 h-5 text-[#A7F3D0] group-hover:text-[#D4AF37] transition-colors"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                      />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+
                               <p className="text-xs text-center text-white/50 mt-4 italic font-light">
                                 Escucha tu mensaje personalizado
                               </p>
